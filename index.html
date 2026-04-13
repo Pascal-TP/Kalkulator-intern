@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NDF Kalkulator (intern)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__title">NDF Kalkulator</div>
+      <div class="brand__subtitle">Interne Kalkulation – Excel-Logik vereinfacht</div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>1) Grunddaten</h2>
+
+      <div class="grid">
+        <label class="field">
+          <span class="field__label">Kalkulation für</span>
+          <select id="customerType" class="field__control">
+            <option value="ndf">NDF</option>
+            <option value="pj">Peter Jensen</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field__label">System / Ausführung</span>
+          <select id="systemType" class="field__control"></select>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Fläche (m²)</span>
+          <input id="areaM2" class="field__control" type="number" min="0" step="0.1" placeholder="z.B. 120" />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Monteure (Anzahl)</span>
+          <input id="installers" class="field__control" type="number" min="1" step="1" value="2" />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Entfernung (km) – manuell</span>
+          <input id="distanceKm" class="field__control" type="number" min="0" step="1" placeholder="z.B. 35" />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Rabatt (%)</span>
+          <input id="discountPct" class="field__control" type="number" min="0" step="0.1" placeholder="optional" />
+        </label>
+
+        <label class="field">
+          <span class="field__label">Rabatt pauschal (€)</span>
+          <input id="discountAbs" class="field__control" type="number" min="0" step="0.01" placeholder="optional" />
+        </label>
+      </div>
+
+      <div class="hint" id="hintBox"></div>
+    </section>
+
+    <section class="card">
+      <h2>2) Material aus Preisliste</h2>
+      <p class="muted">Preisliste wird aus <code>preisliste_ek.csv</code> geladen. Suche Artikelnummer oder Text, dann Position hinzufügen.</p>
+
+      <div class="material-search">
+        <input id="search" class="field__control" type="search" placeholder="Suche: Artikelnummer oder Text…" />
+        <button id="btnAddSelected" class="btn">Ausgewählten Artikel hinzufügen</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="searchTable">
+          <thead>
+            <tr>
+              <th>Artikelnummer</th>
+              <th>Kurztext</th>
+              <th>EK</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>Positionen</h3>
+      <div class="table-wrap">
+        <table class="table" id="cartTable">
+          <thead>
+            <tr>
+              <th>Artikelnummer</th>
+              <th>Kurztext</th>
+              <th class="right">Menge</th>
+              <th>Einheit</th>
+              <th class="right">EP (EK)</th>
+              <th class="right">Summe</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="5" class="right"><strong>Material (EK) gesamt</strong></td>
+              <td class="right" id="matTotal">0,00 €</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3) Ergebnis</h2>
+
+      <div class="grid grid--result">
+        <div class="kpi">
+          <div class="kpi__label">Montagezeit (h)</div>
+          <div class="kpi__value" id="kpiHours">–</div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Lohnkosten</div>
+          <div class="kpi__value" id="kpiLabor">–</div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Zwischensumme</div>
+          <div class="kpi__value" id="kpiSubtotal">–</div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Gemeinkosten</div>
+          <div class="kpi__value" id="kpiOverhead">–</div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi__label">Gewinn</div>
+          <div class="kpi__value" id="kpiProfit">–</div>
+        </div>
+
+        <div class="kpi kpi--total">
+          <div class="kpi__label">Angebotspreis (netto)</div>
+          <div class="kpi__value" id="kpiTotal">–</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnReset" class="btn btn--ghost">Zurücksetzen</button>
+        <button id="btnExport" class="btn btn--primary">Export (CSV der Positionen)</button>
+      </div>
+
+      <p class="muted small">Hinweis: Dies ist eine vereinfachte Web-Umsetzung. Regeln/Parameter können 1:1 an unsere Excel-Logik angepasst werden (z. B. Reisekosten, Spesen, Sonderpositionen).</p>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

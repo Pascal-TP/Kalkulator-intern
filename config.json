@@ -1,0 +1,68 @@
+{
+  "basisdaten": {
+    "stundensatz": {
+      "monteur": 35.29,
+      "bauleiter": 51.53
+    },
+    "gewinn_pct": 10.0,
+    "gemeinkosten_pct": 12.5,
+    "rabatt_pj_pct": 15.0
+  },
+  "montageleistung_m2_pro_8h_pro_monteur": [
+    {
+      "id": "daemmung_1",
+      "label": "Dämmung 1-lagig",
+      "value": 80
+    },
+    {
+      "id": "daemmung_2",
+      "label": "Dämmung 2-lagig",
+      "value": 70
+    },
+    {
+      "id": "daemmung_3",
+      "label": "Dämmung 3-lagig",
+      "value": 60
+    },
+    {
+      "id": "tacker_rohr",
+      "label": "Tacker-system + Rohr",
+      "value": 75
+    },
+    {
+      "id": "klett_rohr",
+      "label": "Klettsystem + Rohr",
+      "value": 75
+    },
+    {
+      "id": "noppen_rohr",
+      "label": "Noppen-system + Rohr",
+      "value": 40
+    },
+    {
+      "id": "nur_rohr_tacker",
+      "label": "Nur Rohr als Tacker",
+      "value": 180
+    },
+    {
+      "id": "nur_rohr_klett",
+      "label": "Nur Rohr als Klett",
+      "value": 180
+    },
+    {
+      "id": "nur_rohr_noppe",
+      "label": "Nur Rohr in Noppe",
+      "value": 120
+    },
+    {
+      "id": "trockenbau_fbh",
+      "label": "Trockenbau FBH",
+      "value": 30
+    },
+    {
+      "id": "norit_thermo",
+      "label": "Norit Thermo",
+      "value": 40
+    }
+  ]
+}
