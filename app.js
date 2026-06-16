@@ -1,297 +1,261 @@
-import { parseCsvSemicolon, euro, clampNumber } from "./lib.js";
+const steps = [
+  'Projekt & Grunddaten', 'Etagen / Optionen', 'Fahrt & Personal', 'Grundparameter', 'Einzelpreise', 'Ergebnis'
+];
+let currentStep = 1;
+let activeFloor = 0;
+let prices = [];
+const floors = [1,2,3,4].map(n => ({
+  active: n === 1,
+  name: `Etage ${n}`,
+  description: n === 1 ? 'EG / Hauptfläche' : '',
+  area: n === 1 ? 120 : 0,
+  spacing: 15,
+  insulationLayers: n === 1 ? 1 : 0,
+  insulationPrice: 4.29,
+  system: n === 1 ? 'Tacker' : 'Keine Auswahl',
+  systemPrice: n === 1 ? 2.98 : 0,
+  pipePrice: 0.60,
+  foil: true,
+  foilPrice: 0.35,
+  thermowhite: false,
+  thermoM3: 0,
+  thermoPrice: 22.31,
+  milling: false,
+  millingPrice: 0,
+  extraPriceM2: 0,
+  sub: false,
+  subPriceM2: 0
+}));
 
-let CONFIG = null;
-let PRICE_ROWS = [];
-let PRICE_BY_ART = new Map();
+const q = id => document.getElementById(id);
+const n = id => Number(String(q(id)?.value || 0).replace(',', '.')) || 0;
+const eur = v => (Number(v)||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+const num = v => (Number(v)||0).toLocaleString('de-DE',{minimumFractionDigits:2, maximumFractionDigits:2});
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-const state = {
-  customerType: "ndf",
-  systemTypeId: null,
-  areaM2: 0,
-  installers: 2,
-  distanceKm: 0,
-  discountPct: null,
-  discountAbs: null,
-  cart: [], // {artikelnummer, kurztext, ek, menge, einheit}
-};
-
-function byId(id){ return document.getElementById(id); }
-
-async function loadConfig(){
-  const res = await fetch("./config.json");
-  CONFIG = await res.json();
+function init(){
+  renderSteps();
+  renderFloorTabs();
+  renderFloorEditor();
+  bindEvents();
+  loadCsvFromServer();
+  updateAll();
 }
 
-async function loadPriceList(){
-  const res = await fetch("./preisliste_ek.csv");
-  const text = await res.text();
-  PRICE_ROWS = parseCsvSemicolon(text).map(r => ({
-    bereich: r["Bereich"] ?? "",
-    typ: r["Typ"] ?? "",
-    artikelnummer: String(r["Artikelnummer"] ?? "").trim(),
-    kurztext: r["Kurztext"] ?? "",
-    ek: Number(String(r["EK"] ?? "").replace(",", "."))
-  })).filter(r => r.artikelnummer && Number.isFinite(r.ek));
-
-  PRICE_BY_ART = new Map(PRICE_ROWS.map(r => [r.artikelnummer, r]));
+function bindEvents(){
+  document.body.addEventListener('input', e => { if(e.target.matches('input,select')) updateAll(); });
+  document.body.addEventListener('change', e => { if(e.target.matches('input,select')) updateAll(); });
+  q('nextBtn').addEventListener('click', () => { if(currentStep < steps.length){ currentStep++; showStep(); }});
+  q('prevBtn').addEventListener('click', () => { if(currentStep > 1){ currentStep--; showStep(); }});
+  q('recalcBtn').addEventListener('click', updateAll);
+  q('resetBtn').addEventListener('click', () => location.reload());
+  q('priceSearch').addEventListener('input', renderPriceTable);
+  q('copyResultBtn').addEventListener('click', copyResult);
+  q('csvUpload').addEventListener('change', handleCsvUpload);
 }
 
-function mountSystemSelect(){
-  const sel = byId("systemType");
-  sel.innerHTML = "";
-  for (const s of CONFIG.montageleistung_m2_pro_8h_pro_monteur) {
-    const opt = document.createElement("option");
-    opt.value = s.id;
-    opt.textContent = `${s.label} (${s.value} m²/8h/Monteur)`;
-    sel.appendChild(opt);
-  }
-  state.systemTypeId = sel.value || CONFIG.montageleistung_m2_pro_8h_pro_monteur[0]?.id || null;
+function renderSteps(){
+  q('stepList').innerHTML = steps.map((s,i) => `<div class="step-item clickable ${i+1===currentStep?'active':''}" data-step="${i+1}"><span class="step-number">${i+1}</span><span>${s}</span></div>`).join('');
+  q('stepList').querySelectorAll('.step-item').forEach(el => el.addEventListener('click', () => { currentStep = Number(el.dataset.step); showStep(); }));
 }
 
-function getSystemPerf(){
-  const s = CONFIG.montageleistung_m2_pro_8h_pro_monteur.find(x => x.id === state.systemTypeId);
-  return s?.value ?? 0;
+function showStep(){
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.toggle('active', Number(p.dataset.panel) === currentStep));
+  q('prevBtn').disabled = currentStep === 1;
+  q('nextBtn').textContent = currentStep === steps.length ? 'Fertig' : 'Weiter';
+  if(currentStep === steps.length) renderResult();
+  renderSteps();
 }
 
-function basis(){
-  return CONFIG.basisdaten;
+function renderFloorTabs(){
+  q('floorTabs').innerHTML = floors.map((f,i) => `<button class="summary-floor-tab ${i===activeFloor?'active':''}" data-floor="${i}">${esc(f.name)}${f.active?'':' (aus)'}</button>`).join('');
+  q('floorTabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { activeFloor = Number(b.dataset.floor); renderFloorTabs(); renderFloorEditor(); }));
 }
 
-// --------- Engine (vereinfachte Excel-Logik) ----------
-function calc(){
-  const b = basis();
-  const area = clampNumber(state.areaM2, 0, 1e9);
-  const installers = clampNumber(state.installers, 1, 50);
-  const perf = getSystemPerf(); // m² / 8h / Monteur
-
-  // Montagezeit: Stunden pro Monteur = Fläche / Leistung * 8
-  const hoursPerMonteur = perf > 0 ? (area / perf) * 8 : 0;
-  const laborHoursTotal = hoursPerMonteur * installers;
-
-  const laborCost = laborHoursTotal * (b.stundensatz.monteur ?? 0);
-
-  // Material (EK)
-  let materialEK = 0;
-  for (const it of state.cart) {
-    const qty = clampNumber(it.menge, 0, 1e9);
-    materialEK += qty * it.ek;
-  }
-
-  // Zwischensumme
-  const subtotal = laborCost + materialEK;
-
-  // Gemeinkosten + Gewinn (auf subtotal)
-  const overhead = subtotal * ((b.gemeinkosten_pct ?? 0) / 100);
-  const profit = subtotal * ((b.gewinn_pct ?? 0) / 100);
-
-  let total = subtotal + overhead + profit;
-
-  // Rabattlogik
-  // - optionaler Rabatt% aus Eingabe (überschreibt nicht automatisch)
-  // - PJ: wenn kein Rabatt% eingegeben -> Standard aus Basisdaten (Rabatt PJ %)
-  let rabattPct = null;
-  if (state.discountPct != null && state.discountPct !== "") {
-    rabattPct = clampNumber(state.discountPct, 0, 100);
-  } else if (state.customerType === "pj") {
-    rabattPct = clampNumber(b.rabatt_pj_pct ?? 0, 0, 100);
-  }
-  if (rabattPct != null) {
-    total = total * (1 - rabattPct / 100);
-  }
-
-  // pauschaler Rabatt €
-  const rabattAbs = state.discountAbs != null && state.discountAbs !== "" ? clampNumber(state.discountAbs, 0, 1e12) : null;
-  if (rabattAbs != null) total = Math.max(0, total - rabattAbs);
-
-  return {
-    perf,
-    hours: laborHoursTotal,
-    laborCost,
-    materialEK,
-    subtotal,
-    overhead,
-    profit,
-    total
-  };
-}
-
-// --------- UI ----------
-function renderSearch(rows){
-  const tbody = byId("searchTable").querySelector("tbody");
-  tbody.innerHTML = "";
-  for (const r of rows.slice(0, 50)) {
-    const tr = document.createElement("tr");
-    tr.dataset.art = r.artikelnummer;
-    tr.innerHTML = `
-      <td>${escapeHtml(r.artikelnummer)}</td>
-      <td>${escapeHtml(r.kurztext)}</td>
-      <td class="right">${euro(r.ek)}</td>
-    `;
-    tr.addEventListener("click", () => {
-      tbody.querySelectorAll("tr").forEach(x => x.classList.remove("selected"));
-      tr.classList.add("selected");
-    });
-    tbody.appendChild(tr);
-  }
-}
-
-function getSelectedSearchArticle(){
-  const tr = byId("searchTable").querySelector("tbody tr.selected");
-  if (!tr) return null;
-  const art = tr.dataset.art;
-  return PRICE_BY_ART.get(art) || null;
-}
-
-function renderCart(){
-  const tbody = byId("cartTable").querySelector("tbody");
-  tbody.innerHTML = "";
-  for (const [idx, it] of state.cart.entries()) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(it.artikelnummer)}</td>
-      <td>${escapeHtml(it.kurztext)}</td>
-      <td class="right"><input data-idx="${idx}" class="field__control" style="width:110px" type="number" min="0" step="0.01" value="${it.menge}"></td>
-      <td>${escapeHtml(it.einheit || "")}</td>
-      <td class="right">${euro(it.ek)}</td>
-      <td class="right">${euro(it.ek * it.menge)}</td>
-      <td class="right"><button class="btn btn--ghost" data-del="${idx}">✕</button></td>
-    `;
-    tbody.appendChild(tr);
-  }
-
-  // qty listeners
-  tbody.querySelectorAll("input[data-idx]").forEach(inp => {
-    inp.addEventListener("input", () => {
-      const i = Number(inp.dataset.idx);
-      const v = Number(String(inp.value).replace(",", "."));
-      if (Number.isFinite(v)) state.cart[i].menge = v;
-      recalc();
-    });
-  });
-
-  // delete listeners
-  tbody.querySelectorAll("button[data-del]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const i = Number(btn.dataset.del);
-      state.cart.splice(i, 1);
-      recalc();
-    });
+function renderFloorEditor(){
+  const f = floors[activeFloor];
+  q('floorEditor').innerHTML = `
+  <div class="sub-block">
+    <div class="floor-editor-head">
+      <div class="field"><label>Bezeichnung</label><input class="floor-input" data-key="name" value="${esc(f.name)}"></div>
+      <label class="inline-check"><input type="checkbox" data-key="active" ${f.active?'checked':''}> Etage aktiv</label>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Beschreibung</label><input data-key="description" value="${esc(f.description)}" placeholder="z.B. EG, OG, DG"></div>
+      <div class="field"><label>Fläche (m²)</label><input type="number" step="0.01" data-key="area" value="${f.area}"></div>
+    </div>
+    <div class="form-grid three">
+      <div class="field"><label>Verlegeabstand (cm)</label><select data-key="spacing">${[5,7.5,10,12.5,15,20,25,30,35,40].map(v=>`<option ${f.spacing==v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>Rohrpreis €/m</label><input type="number" step="0.01" data-key="pipePrice" value="${f.pipePrice}"></div>
+      <div class="field"><label>Zusatz €/m²</label><input type="number" step="0.01" data-key="extraPriceM2" value="${f.extraPriceM2}"></div>
+    </div>
+  </div>
+  <div class="sub-block">
+    <h3>System / Ausführung</h3>
+    <div class="form-grid three">
+      <div class="field"><label>System</label><select data-key="system"><option>Keine Auswahl</option>${['Tacker','Klett','Noppe','Trockenbau FBH','nur Rohr Tacker','nur Rohr Klett','Fräsen'].map(v=>`<option ${f.system===v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>System EK €/m²</label><input type="number" step="0.01" data-key="systemPrice" value="${f.systemPrice}"></div>
+      <div class="field"><label>Subunternehmer</label><select data-key="sub"><option value="false" ${!f.sub?'selected':''}>Nein</option><option value="true" ${f.sub?'selected':''}>Ja</option></select></div>
+    </div>
+    <div class="form-grid three">
+      <div class="field"><label>Subunternehmer €/m²</label><input type="number" step="0.01" data-key="subPriceM2" value="${f.subPriceM2}"></div>
+      <div class="field"><label>Fräsen aktiv</label><select data-key="milling"><option value="false" ${!f.milling?'selected':''}>Nein</option><option value="true" ${f.milling?'selected':''}>Ja</option></select></div>
+      <div class="field"><label>Fräsen Zusatz €/m²</label><input type="number" step="0.01" data-key="millingPrice" value="${f.millingPrice}"></div>
+    </div>
+  </div>
+  <div class="sub-block">
+    <h3>Dämmung / Folie / ThermoWhite</h3>
+    <div class="form-grid three">
+      <div class="field"><label>Dämmung Lagen</label><select data-key="insulationLayers">${[0,1,2,3].map(v=>`<option ${f.insulationLayers==v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>Dämmung EK €/m² je Lage</label><input type="number" step="0.01" data-key="insulationPrice" value="${f.insulationPrice}"></div>
+      <div class="field"><label>PE-/Rasterfolie</label><select data-key="foil"><option value="true" ${f.foil?'selected':''}>Ja</option><option value="false" ${!f.foil?'selected':''}>Nein</option></select></div>
+      <div class="field"><label>Folie EK €/m²</label><input type="number" step="0.01" data-key="foilPrice" value="${f.foilPrice}"></div>
+      <div class="field"><label>ThermoWhite</label><select data-key="thermowhite"><option value="false" ${!f.thermowhite?'selected':''}>Nein</option><option value="true" ${f.thermowhite?'selected':''}>Ja</option></select></div>
+      <div class="field"><label>ThermoWhite Menge (m³)</label><input type="number" step="0.01" data-key="thermoM3" value="${f.thermoM3}"></div>
+      <div class="field"><label>ThermoWhite EK €/m³</label><input type="number" step="0.01" data-key="thermoPrice" value="${f.thermoPrice}"></div>
+    </div>
+  </div>`;
+  q('floorEditor').querySelectorAll('[data-key]').forEach(el => {
+    el.addEventListener('input', updateFloorFromEditor);
+    el.addEventListener('change', updateFloorFromEditor);
   });
 }
 
-function recalc(){
-  // read inputs
-  state.customerType = byId("customerType").value;
-  state.systemTypeId = byId("systemType").value;
-  state.areaM2 = Number(String(byId("areaM2").value).replace(",", "."));
-  state.installers = Number(String(byId("installers").value).replace(",", "."));
-  state.distanceKm = Number(String(byId("distanceKm").value).replace(",", "."));
-  state.discountPct = byId("discountPct").value;
-  state.discountAbs = byId("discountAbs").value;
-
-  // hint
-  const h = byId("hintBox");
-  const baseDisc = (basis().rabatt_pj_pct ?? 0);
-  if (state.customerType === "pj" && (!state.discountPct || String(state.discountPct).trim()==="")) {
-    h.innerHTML = `PJ-Standardrabatt aktiv: <strong>${baseDisc}%</strong> (überschreibbar über Rabatt %).`;
-  } else {
-    h.textContent = "";
-  }
-
-  const r = calc();
-
-  byId("kpiHours").textContent = r.hours ? (r.hours.toFixed(2) + " h") : "–";
-  byId("kpiLabor").textContent = euro(r.laborCost);
-  byId("kpiSubtotal").textContent = euro(r.subtotal);
-  byId("kpiOverhead").textContent = euro(r.overhead);
-  byId("kpiProfit").textContent = euro(r.profit);
-  byId("kpiTotal").textContent = euro(r.total);
-
-  byId("matTotal").textContent = euro(r.materialEK);
-
-  renderCart();
-}
-
-function exportCartCsv(){
-  const header = ["Artikelnummer","Kurztext","Menge","Einheit","EP_EK"];
-  const lines = [header.join(";")];
-  for (const it of state.cart) {
-    lines.push([
-      it.artikelnummer,
-      it.kurztext.replace(/\s+/g," ").trim(),
-      String(it.menge).replace(".",","),
-      it.einheit || "",
-      String(it.ek).replace(".",",")
-    ].map(csvEsc).join(";"));
-  }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "kalkulation_positionen.csv";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function csvEsc(v){
-  const s = String(v ?? "");
-  return (s.includes(";") || s.includes("\n") || s.includes("\"")) ? `"${s.replace(/"/g,'""')}"` : s;
-}
-function escapeHtml(s){
-  return String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-}
-
-// --------- Boot ----------
-async function boot(){
-  await loadConfig();
-  await loadPriceList();
-
-  mountSystemSelect();
-
-  // initial search
-  renderSearch(PRICE_ROWS);
-
-  // listeners
-  ["customerType","systemType","areaM2","installers","distanceKm","discountPct","discountAbs"].forEach(id => {
-    byId(id).addEventListener("input", recalc);
-    byId(id).addEventListener("change", recalc);
+function updateFloorFromEditor(){
+  const f = floors[activeFloor];
+  q('floorEditor').querySelectorAll('[data-key]').forEach(el => {
+    const key = el.dataset.key;
+    let val = el.type === 'checkbox' ? el.checked : el.value;
+    if(['active','sub','milling','foil','thermowhite'].includes(key)) val = val === true || val === 'true';
+    else if(!['name','description','system'].includes(key)) val = Number(String(val).replace(',','.')) || 0;
+    f[key] = val;
   });
-
-  byId("search").addEventListener("input", () => {
-    const q = byId("search").value.trim().toLowerCase();
-    const filtered = !q ? PRICE_ROWS : PRICE_ROWS.filter(r =>
-      r.artikelnummer.toLowerCase().includes(q) || (r.kurztext || "").toLowerCase().includes(q)
-    );
-    renderSearch(filtered);
-  });
-
-  byId("btnAddSelected").addEventListener("click", () => {
-    const r = getSelectedSearchArticle();
-    if (!r) return alert("Bitte zuerst einen Artikel in der Tabelle auswählen.");
-    // Wenn schon im Warenkorb: Menge +1
-    const existing = state.cart.find(x => x.artikelnummer === r.artikelnummer);
-    if (existing) existing.menge = clampNumber(existing.menge + 1, 0, 1e9);
-    else state.cart.push({ artikelnummer: r.artikelnummer, kurztext: r.kurztext, ek: r.ek, menge: 1, einheit: "" });
-    recalc();
-  });
-
-  byId("btnReset").addEventListener("click", () => {
-    state.customerType = "ndf";
-    state.cart = [];
-    byId("customerType").value = "ndf";
-    byId("areaM2").value = "";
-    byId("installers").value = "2";
-    byId("distanceKm").value = "";
-    byId("discountPct").value = "";
-    byId("discountAbs").value = "";
-    recalc();
-  });
-
-  byId("btnExport").addEventListener("click", exportCartCsv);
-
-  recalc();
+  renderFloorTabs();
+  updateAll(false);
 }
 
-boot().catch(err => {
-  console.error(err);
-  alert("Fehler beim Laden. Bitte Konsole prüfen.");
-});
+function pipeMetersPerM2(spacing){
+  const map = {5:20, 7.5:15, 10:10, 12.5:8.5, 15:7, 20:5, 25:4, 30:3.5, 35:3, 40:2.5};
+  return map[String(spacing)] || (100 / spacing);
+}
+
+function perfForFloor(f){
+  if(f.system === 'Klett') return n('perfKlett');
+  if(f.system === 'Noppe') return n('perfNoppe');
+  if(f.system === 'Fräsen' || f.milling) return n('perfMilling');
+  return n('perfTacker');
+}
+
+function calcFloor(f){
+  if(!f.active || f.area <= 0) return {active:false, area:0, material:0, labor:0, total:0, priceM2:0, hours:0, pipeM:0};
+  const waste = 1 + n('waste')/100;
+  const pipeM = f.area * pipeMetersPerM2(f.spacing);
+  const insulation = f.area * f.insulationLayers * f.insulationPrice * waste;
+  const system = f.area * f.systemPrice * waste;
+  const pipe = pipeM * f.pipePrice;
+  const foil = f.foil ? f.area * f.foilPrice * waste : 0;
+  const thermo = f.thermowhite ? f.thermoM3 * f.thermoPrice : 0;
+  const milling = f.milling ? f.area * f.millingPrice : 0;
+  const extra = f.area * f.extraPriceM2;
+  const sub = f.sub ? f.area * f.subPriceM2 : 0;
+  const material = insulation + system + pipe + foil + thermo + milling + extra + sub;
+  const insPerf = f.insulationLayers === 1 ? n('perfIns1') : f.insulationLayers === 2 ? n('perfIns2') : f.insulationLayers === 3 ? n('perfIns3') : 0;
+  const hoursIns = insPerf > 0 ? (f.area / insPerf) * 8 : 0;
+  const hoursSystem = perfForFloor(f) > 0 && f.system !== 'Keine Auswahl' ? (f.area / perfForFloor(f)) * 8 : 0;
+  const hoursFoil = f.foil && n('perfFoil') > 0 ? (f.area / n('perfFoil')) * 8 : 0;
+  const hoursThermo = f.thermowhite && n('perfThermo') > 0 ? (f.thermoM3 / n('perfThermo')) * 8 * Math.max(1,n('workers')) : 0;
+  const hours = hoursIns + hoursSystem + hoursFoil + hoursThermo;
+  const avgRate = ((n('workers') * n('rateWorker')) + (n('journeymen') * n('rateJourneyman'))) / Math.max(1, n('workers') + n('journeymen'));
+  const labor = hours * avgRate;
+  const total = material + labor;
+  return {active:true, area:f.area, material, labor, total, priceM2: total / f.area, hours, pipeM, insulation, system, pipe, foil, thermo, milling, extra, sub};
+}
+
+function calcAll(){
+  const floorCalcs = floors.map(calcFloor);
+  const area = floorCalcs.reduce((s,x)=>s+x.area,0);
+  const material = floorCalcs.reduce((s,x)=>s+x.material,0);
+  const labor = floorCalcs.reduce((s,x)=>s+x.labor,0);
+  const hours = floorCalcs.reduce((s,x)=>s+x.hours,0);
+  const kmCosts = q('calcKm').value === 'yes' ? n('distanceKm') * 2 * n('vehicles') * n('vehicleCostKm') : 0;
+  const travelHours = q('calcKm').value === 'yes' && n('avgSpeed') > 0 ? n('distanceKm') * 2 / n('avgSpeed') * (n('workers') + n('journeymen')) : 0;
+  const travelLabor = travelHours * n('rateWorker');
+  const extras = kmCosts + travelLabor + n('islandFee') + n('hotelCost') + n('extraFees') + n('managerHours') * n('rateManager');
+  const direct = material + labor + extras;
+  const overhead = direct * n('overhead')/100;
+  const subtotal = Math.max(direct + overhead, n('minJob'));
+  const profit = subtotal * n('profit')/100;
+  let total = subtotal + profit;
+  const discount = total * n('discountPercent')/100 + n('discountFixed');
+  total = Math.max(0, total - discount);
+  const skonto = total * n('cashDiscount')/100;
+  const afterSkonto = Math.max(0,total - skonto);
+  return {floorCalcs, area, material, labor, hours, kmCosts, travelLabor, extras, direct, overhead, profit, discount, skonto, total, afterSkonto, priceM2: area ? total/area : 0, priceM2Skonto: area ? afterSkonto/area : 0};
+}
+
+function updateAll(repaintEditor=true){
+  renderSummary();
+  if(currentStep === 6) renderResult();
+}
+
+function renderSummary(){
+  const c = calcAll();
+  q('summaryContent').innerHTML = `
+    <div class="summary-box calc-box"><strong>Preis netto</strong><span class="tag">${eur(c.total)}</span><span class="tag">${num(c.priceM2)} €/m²</span></div>
+    <div class="summary-box"><strong>Fläche</strong>${num(c.area)} m²</div>
+    <div class="summary-box"><strong>Material / Lohn</strong>${eur(c.material)} / ${eur(c.labor)}</div>
+    <div class="summary-box"><strong>Stunden gesamt</strong>${num(c.hours)} h</div>
+    ${floors.map((f,i)=>`<div class="summary-room-card"><div class="summary-room-title">${esc(f.name)} ${f.active?'':'(aus)'}</div><div class="summary-room-line"><span>Fläche</span><strong>${num(f.area)} m²</strong></div><div class="summary-room-line"><span>System</span><strong>${esc(f.system)}</strong></div></div>`).join('')}
+  `;
+}
+
+function renderResult(){
+  const c = calcAll();
+  const floorRows = c.floorCalcs.map((x,i)=> x.active ? `<tr><td>${esc(floors[i].name)}</td><td>${num(x.area)} m²</td><td>${eur(x.material)}</td><td>${eur(x.labor)}</td><td>${num(x.hours)} h</td><td>${num(x.priceM2)} €/m²</td></tr>` : '').join('');
+  q('resultOutput').innerHTML = `
+    <div class="kpi-grid"><div class="kpi-card"><span>Gesamtpreis netto</span><strong>${eur(c.total)}</strong></div><div class="kpi-card"><span>Preis je m²</span><strong>${num(c.priceM2)} €/m²</strong></div><div class="kpi-card"><span>Gesamtfläche</span><strong>${num(c.area)} m²</strong></div><div class="kpi-card"><span>Stunden</span><strong>${num(c.hours)} h</strong></div></div>
+    <div class="result-table-wrap"><table class="result-table"><thead><tr><th>Etage</th><th>Fläche</th><th>Material</th><th>Lohn</th><th>Zeit</th><th>€/m² direkt</th></tr></thead><tbody>${floorRows || '<tr><td colspan="6">Keine aktive Etage mit Fläche erfasst.</td></tr>'}</tbody></table></div>
+    <div class="sub-block technical-result-box"><h3>Kostenblock</h3><div class="technical-grid"><div><span>Material</span><strong>${eur(c.material)}</strong></div><div><span>Lohn Montage</span><strong>${eur(c.labor)}</strong></div><div><span>Fahrt / Pauschalen / PL</span><strong>${eur(c.extras)}</strong></div><div><span>Direktkosten</span><strong>${eur(c.direct)}</strong></div><div><span>Gemeinkosten</span><strong>${eur(c.overhead)}</strong></div><div><span>Gewinn</span><strong>${eur(c.profit)}</strong></div><div><span>Rabatt</span><strong>${eur(c.discount)}</strong></div><div><span>Skonto nachrichtlich</span><strong>${eur(c.skonto)}</strong></div></div></div>
+    <p class="warning-note">Entwurf zur internen Kalkulation. Die fachliche Prüfung der Rechenlogik, Artikelzuordnung und Montageleistungen muss durch die Verantwortlichen erfolgen.</p>`;
+}
+
+async function loadCsvFromServer(){
+  try{
+    const res = await fetch('preise.csv', {cache:'no-store'});
+    if(res.ok){ prices = parseCsv(await res.text()); renderPriceTable(); return; }
+  } catch(e) {}
+  prices = [
+    {artikel:'200215', name:'ROTH - Flipfix Tacker Systemplatte', ek:2.98},
+    {artikel:'200145', name:'HEROTEC - Klettvlies tempusFLAT KLETT', ek:4.85},
+    {artikel:'200171', name:'MAINCOR - MFL Noppenplatte Premium 11 mm', ek:6.69},
+    {artikel:'200005', name:'AirPor EPS 035 DEO 20 mm', ek:1.43},
+    {artikel:'200012', name:'ALUJET - Floorjet Speed Abdichtungsbahn', ek:2.23}
+  ];
+  renderPriceTable();
+}
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const sep = lines[0]?.includes(';') ? ';' : ',';
+  return lines.slice(1).map(line => {
+    const parts = line.split(sep);
+    return {artikel:parts[0]||'', name:parts.slice(1,-1).join(sep)||parts[1]||'', ek:Number(String(parts.at(-1)||0).replace(',','.'))||0};
+  }).filter(x=>x.name || x.artikel);
+}
+function renderPriceTable(){
+  const term = (q('priceSearch')?.value || '').toLowerCase();
+  const shown = prices.filter(p => !term || (p.name+p.artikel).toLowerCase().includes(term)).slice(0,80);
+  q('priceTable').querySelector('tbody').innerHTML = shown.map(p => `<tr><td>${esc(p.artikel)}</td><td>${esc(p.name)}</td><td><span class="price-pill">${eur(p.ek)}</span></td></tr>`).join('');
+}
+function handleCsvUpload(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { prices = parseCsv(reader.result); renderPriceTable(); };
+  reader.readAsText(file, 'utf-8');
+}
+function copyResult(){
+  const c = calcAll();
+  const text = `NDF KalkPro Ergebnis\nProjekt: ${q('projectNo').value}\nKunde: ${q('customer').value}\nFläche: ${num(c.area)} m²\nGesamt netto: ${eur(c.total)}\nPreis netto: ${num(c.priceM2)} €/m²`;
+  navigator.clipboard?.writeText(text);
+}
+
+document.addEventListener('DOMContentLoaded', init);

@@ -3,156 +3,133 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NDF Kalkulator (intern)</title>
+  <title>NDF KalkPro – Entwurf Flächenheizung</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand__title">NDF Kalkulator</div>
-      <div class="brand__subtitle">Interne Kalkulation – Excel-Logik vereinfacht</div>
-    </div>
-  </header>
-
-  <main class="container">
-    <section class="card">
-      <h2>1) Grunddaten</h2>
-
-      <div class="grid">
-        <label class="field">
-          <span class="field__label">Kalkulation für</span>
-          <select id="customerType" class="field__control">
-            <option value="ndf">NDF</option>
-            <option value="pj">Peter Jensen</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span class="field__label">System / Ausführung</span>
-          <select id="systemType" class="field__control"></select>
-        </label>
-
-        <label class="field">
-          <span class="field__label">Fläche (m²)</span>
-          <input id="areaM2" class="field__control" type="number" min="0" step="0.1" placeholder="z.B. 120" />
-        </label>
-
-        <label class="field">
-          <span class="field__label">Monteure (Anzahl)</span>
-          <input id="installers" class="field__control" type="number" min="1" step="1" value="2" />
-        </label>
-
-        <label class="field">
-          <span class="field__label">Entfernung (km) – manuell</span>
-          <input id="distanceKm" class="field__control" type="number" min="0" step="1" placeholder="z.B. 35" />
-        </label>
-
-        <label class="field">
-          <span class="field__label">Rabatt (%)</span>
-          <input id="discountPct" class="field__control" type="number" min="0" step="0.1" placeholder="optional" />
-        </label>
-
-        <label class="field">
-          <span class="field__label">Rabatt pauschal (€)</span>
-          <input id="discountAbs" class="field__control" type="number" min="0" step="0.01" placeholder="optional" />
-        </label>
-      </div>
-
-      <div class="hint" id="hintBox"></div>
-    </section>
-
-    <section class="card">
-      <h2>2) Material aus Preisliste</h2>
-      <p class="muted">Preisliste wird aus <code>preisliste_ek.csv</code> geladen. Suche Artikelnummer oder Text, dann Position hinzufügen.</p>
-
-      <div class="material-search">
-        <input id="search" class="field__control" type="search" placeholder="Suche: Artikelnummer oder Text…" />
-        <button id="btnAddSelected" class="btn">Ausgewählten Artikel hinzufügen</button>
-      </div>
-
-      <div class="table-wrap">
-        <table class="table" id="searchTable">
-          <thead>
-            <tr>
-              <th>Artikelnummer</th>
-              <th>Kurztext</th>
-              <th>EK</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <h3>Positionen</h3>
-      <div class="table-wrap">
-        <table class="table" id="cartTable">
-          <thead>
-            <tr>
-              <th>Artikelnummer</th>
-              <th>Kurztext</th>
-              <th class="right">Menge</th>
-              <th>Einheit</th>
-              <th class="right">EP (EK)</th>
-              <th class="right">Summe</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-          <tfoot>
-            <tr>
-              <td colspan="5" class="right"><strong>Material (EK) gesamt</strong></td>
-              <td class="right" id="matTotal">0,00 €</td>
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>3) Ergebnis</h2>
-
-      <div class="grid grid--result">
-        <div class="kpi">
-          <div class="kpi__label">Montagezeit (h)</div>
-          <div class="kpi__value" id="kpiHours">–</div>
+  <div class="app">
+    <header class="hero">
+      <div class="hero-grid">
+        <div>
+          <h1>NDF KalkPro – Entwurf Flächenheizung</h1>
+          <p>Prototyp auf Grundlage des Excel-Konfigurators: vier Etagen/Optionen, Einzelpreise, Montagezeiten, Fahrt-/Reisekosten und Ergebnis als Netto-Quadratmeterpreis.</p>
         </div>
-
-        <div class="kpi">
-          <div class="kpi__label">Lohnkosten</div>
-          <div class="kpi__value" id="kpiLabor">–</div>
-        </div>
-
-        <div class="kpi">
-          <div class="kpi__label">Zwischensumme</div>
-          <div class="kpi__value" id="kpiSubtotal">–</div>
-        </div>
-
-        <div class="kpi">
-          <div class="kpi__label">Gemeinkosten</div>
-          <div class="kpi__value" id="kpiOverhead">–</div>
-        </div>
-
-        <div class="kpi">
-          <div class="kpi__label">Gewinn</div>
-          <div class="kpi__value" id="kpiProfit">–</div>
-        </div>
-
-        <div class="kpi kpi--total">
-          <div class="kpi__label">Angebotspreis (netto)</div>
-          <div class="kpi__value" id="kpiTotal">–</div>
-        </div>
+        <div class="hero-logo-wrapper"><img src="logo.png" alt="NDF Logo" class="hero-logo" /></div>
       </div>
+    </header>
 
-      <div class="actions">
-        <button id="btnReset" class="btn btn--ghost">Zurücksetzen</button>
-        <button id="btnExport" class="btn btn--primary">Export (CSV der Positionen)</button>
-      </div>
+    <main class="layout" id="layout">
+      <aside class="steps">
+        <h2>Kalkulation</h2>
+        <div class="step-list" id="stepList"></div>
+        <p class="step-hint">Startwerte aus der Excel-Logik / Demo. Später per CSV austauschbar.</p>
+      </aside>
 
-      <p class="muted small">Hinweis: Dies ist eine vereinfachte Web-Umsetzung. Regeln/Parameter können 1:1 an unsere Excel-Logik angepasst werden (z. B. Reisekosten, Spesen, Sonderpositionen).</p>
-    </section>
-  </main>
+      <section class="content-card">
+        <section class="step-panel active" data-panel="1">
+          <h2 class="section-title">1. Projekt & Grunddaten</h2>
+          <p class="section-subtitle">Allgemeine Angebotsdaten und Rabatt-/Zuschlagsparameter.</p>
+          <div class="form-grid">
+            <div class="field"><label>Projekt-Nr.</label><input id="projectNo" value="P-0001"></div>
+            <div class="field"><label>Kunde / Bauvorhaben</label><input id="customer" value="Mustermann Bauvorhaben"></div>
+            <div class="field"><label>Ausführungsort</label><input id="location" value="Musterstraße 1, 21641 Apensen"></div>
+            <div class="field"><label>Kunde von</label><select id="customerFrom"><option>NDF</option><option>Peter Jensen</option></select></div>
+          </div>
+          <div class="form-grid three">
+            <div class="field"><label>Rabatt (%)</label><input type="number" step="0.1" id="discountPercent" value="0"></div>
+            <div class="field"><label>Rabatt pauschal (€)</label><input type="number" step="0.01" id="discountFixed" value="0"></div>
+            <div class="field"><label>Skonto (%)</label><input type="number" step="0.1" id="cashDiscount" value="0"></div>
+          </div>
+          <div class="sub-block notes-box"><h3>Aufbau</h3><p>Die Optionen aus Excel werden hier als Etagen verstanden. Maximal vier Etagen können separat kalkuliert werden.</p></div>
+        </section>
 
-  <script type="module" src="app.js"></script>
+        <section class="step-panel" data-panel="2">
+          <h2 class="section-title">2. Etagen / Optionen</h2>
+          <p class="section-subtitle">Pro Etage können System, Dämmung, Folie, ThermoWhite und Zusatzleistungen ausgewählt werden.</p>
+          <div id="floorTabs" class="summary-floor-tabs"></div>
+          <div id="floorEditor"></div>
+        </section>
+
+        <section class="step-panel" data-panel="3">
+          <h2 class="section-title">3. Fahrt, Personal & Erschwernisse</h2>
+          <p class="section-subtitle">Fahrt-/Nebenleistungen werden pauschal oder über Kilometer und Stunden kalkuliert.</p>
+          <div class="form-grid three">
+            <div class="field"><label>Entfernung einfach (km)</label><input type="number" step="1" id="distanceKm" value="35"></div>
+            <div class="field"><label>Fahrzeuge</label><input type="number" step="1" id="vehicles" value="1"></div>
+            <div class="field"><label>km-Aufschlag berechnen</label><select id="calcKm"><option value="yes">Ja</option><option value="no">Nein</option></select></div>
+          </div>
+          <div class="form-grid three">
+            <div class="field"><label>Inselzuschlag (€)</label><input type="number" step="0.01" id="islandFee" value="0"></div>
+            <div class="field"><label>Hotel / Übernachtung (€)</label><input type="number" step="0.01" id="hotelCost" value="0"></div>
+            <div class="field"><label>Zusätzliche Pauschalen (€)</label><input type="number" step="0.01" id="extraFees" value="0"></div>
+          </div>
+          <div class="form-grid three">
+            <div class="field"><label>Monteur Anzahl</label><input type="number" step="1" id="workers" value="2"></div>
+            <div class="field"><label>Geselle Anzahl</label><input type="number" step="1" id="journeymen" value="0"></div>
+            <div class="field"><label>Meister/Projektleiter h</label><input type="number" step="0.5" id="managerHours" value="1.5"></div>
+          </div>
+        </section>
+
+        <section class="step-panel" data-panel="4">
+          <h2 class="section-title">4. Grundparameter</h2>
+          <p class="section-subtitle">Stundensätze, Montageleistungen, Verschnitt, Gemeinkosten und Gewinn.</p>
+          <div class="sub-block"><h3>Stundensätze & Zuschläge</h3>
+            <div class="form-grid three">
+              <div class="field"><label>Monteur €/h</label><input type="number" step="0.01" id="rateWorker" value="52"></div>
+              <div class="field"><label>Geselle €/h</label><input type="number" step="0.01" id="rateJourneyman" value="58"></div>
+              <div class="field"><label>Meister/PL €/h</label><input type="number" step="0.01" id="rateManager" value="72"></div>
+              <div class="field"><label>Fahrzeug €/km</label><input type="number" step="0.01" id="vehicleCostKm" value="0.85"></div>
+              <div class="field"><label>Ø Geschwindigkeit km/h</label><input type="number" step="1" id="avgSpeed" value="70"></div>
+              <div class="field"><label>Gemeinkosten (%)</label><input type="number" step="0.1" id="overhead" value="12"></div>
+              <div class="field"><label>Gewinn (%)</label><input type="number" step="0.1" id="profit" value="15"></div>
+              <div class="field"><label>Verschnitt Platte/Folie (%)</label><input type="number" step="0.1" id="waste" value="10"></div>
+              <div class="field"><label>Mindestbaustelle (€)</label><input type="number" step="0.01" id="minJob" value="0"></div>
+            </div>
+          </div>
+          <div class="sub-block"><h3>Montageleistungen</h3>
+            <div class="form-grid three">
+              <div class="field"><label>Dämmung 1-lagig m²/8h/Monteur</label><input type="number" id="perfIns1" value="80"></div>
+              <div class="field"><label>Dämmung 2-lagig m²/8h/Monteur</label><input type="number" id="perfIns2" value="70"></div>
+              <div class="field"><label>Dämmung 3-lagig m²/8h/Monteur</label><input type="number" id="perfIns3" value="60"></div>
+              <div class="field"><label>Tackersystem + Rohr m²/8h/Monteur</label><input type="number" id="perfTacker" value="75"></div>
+              <div class="field"><label>Klettsystem + Rohr m²/8h/Monteur</label><input type="number" id="perfKlett" value="75"></div>
+              <div class="field"><label>Noppensystem + Rohr m²/8h/Monteur</label><input type="number" id="perfNoppe" value="40"></div>
+              <div class="field"><label>PE-/Rasterfolie m²/8h/Monteur</label><input type="number" id="perfFoil" value="325"></div>
+              <div class="field"><label>ThermoWhite m³/Tag</label><input type="number" id="perfThermo" value="23"></div>
+              <div class="field"><label>Fräsen m²/8h/Monteur</label><input type="number" id="perfMilling" value="60"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="step-panel" data-panel="5">
+          <h2 class="section-title">5. Einzelpreise</h2>
+          <p class="section-subtitle">Die Datei <strong>preise.csv</strong> wird automatisch geladen. Eine eigene CSV kann zusätzlich importiert werden.</p>
+          <div class="sub-block">
+            <div class="form-grid">
+              <div class="field"><label>CSV importieren (Artikel;Name;EK)</label><input type="file" id="csvUpload" accept=".csv"></div>
+              <div class="field"><label>Artikelsuche</label><input id="priceSearch" placeholder="z.B. Tacker, Klett, Dämmung, ALUJET"></div>
+            </div>
+            <div class="result-table-wrap"><table class="result-table" id="priceTable"><thead><tr><th>Artikel</th><th>Kurztext</th><th>EK</th></tr></thead><tbody></tbody></table></div>
+          </div>
+        </section>
+
+        <section class="step-panel result-panel" data-panel="6">
+          <h2 class="section-title">6. Ergebnis</h2>
+          <p class="section-subtitle">Netto-Kosten, Zuschläge und Quadratmeterpreise.</p>
+          <div id="resultOutput"></div>
+          <div class="result-actions"><button onclick="window.print()">Drucken</button><button class="secondary" id="copyResultBtn">Ergebnis kopieren</button></div>
+        </section>
+
+        <div class="btn-row"><button class="secondary" id="prevBtn">Zurück</button><div class="btn-group"><button class="secondary" id="recalcBtn">Neu berechnen</button><button id="nextBtn">Weiter</button></div></div>
+      </section>
+
+      <aside class="summary">
+        <h2>Live-Zusammenfassung</h2>
+        <button class="secondary clear-all-btn" id="resetBtn">Demo-Werte zurücksetzen</button>
+        <div id="summaryContent"></div>
+      </aside>
+    </main>
+  </div>
+  <script src="app.js"></script>
 </body>
 </html>
